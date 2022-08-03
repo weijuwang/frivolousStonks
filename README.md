@@ -1,2 +1,6 @@
 # frivolousStonks
  
+>Why?
+
+why not?
+
