@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../index.ts"],
+  "sourcesContent": ["import * as Discord from 'discord.js';\n\nconst client = new Discord.Client({\n    intents: [\n        Discord.GatewayIntentBits.Guilds,\n        Discord.GatewayIntentBits.GuildMembers,\n        Discord.GatewayIntentBits.GuildMessages\n    ]\n});\n\nclient.on('ready', () => {\n    console.log(\"Add with https://discord.com/api/oauth2/authorize?client_id=1004486701177110708&permissions=2147485697&scope=bot\");\n});\n\nclient.login(process.env.DISCORD_TOKEN);"],
+  "mappings": ";;;;;;;;;;;;;;;;;;AAAA,cAAyB;AAEzB,MAAM,SAAS,IAAI,QAAQ,OAAO;AAAA,EAC9B,SAAS;AAAA,IACL,QAAQ,kBAAkB;AAAA,IAC1B,QAAQ,kBAAkB;AAAA,IAC1B,QAAQ,kBAAkB;AAAA;AAAA;AAIlC,OAAO,GAAG,SAAS,MAAM;AACrB,UAAQ,IAAI;AAAA;AAGhB,OAAO,MAAM,QAAQ,IAAI;",
+  "names": []
+}

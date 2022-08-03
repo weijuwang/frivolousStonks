@@ -1,0 +1,23 @@
+{
+  "name": "frivolousstonks",
+  "version": "1.0.0",
+  "description": ">Why?",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/weijuwang/frivolousStonks.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/weijuwang/frivolousStonks/issues"
+  },
+  "homepage": "https://github.com/weijuwang/frivolousStonks#readme",
+  "dependencies": {
+    "discord.js": "^14.1.2"
+  }
+}
