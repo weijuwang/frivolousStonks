@@ -19,7 +19,6 @@
 import * as Discord from 'discord.js';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
-import * as cro from 'child_process';
 import * as schedule from 'node-schedule';
 
 interface GuildStockData {
@@ -50,7 +49,7 @@ const client: Discord.Client = new Discord.Client({
   ]
 });
 
-client.on('ready', async () => {
+client.on('ready', () => {
   console.log(`Add with https://discord.com/api/oauth2/authorize?client_id=${client!.user!.id}&permissions=2147485697&scope=bot`);
 });
 
@@ -64,25 +63,29 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
     case 'ping':
       await interaction.reply('pong');
       break;
-    case 'getprice':
-      let name = interaction.options.getString('name');
-      if (name == null) {
-        await interaction.reply('name not specified:try again');
-        break;
-      }else{
-      let serverData: {
-        [key: string]: ServerStockData
-      } = JSON.parse(fs.readFileSync(STOCKDATA).toString());
-      if(serverData[name]){
-        await interaction.reply("Price of " + name + " :  ₦" + serverData[name].average.toFixed(2));
-        break;
-      } 
-      else{await interaction.reply("server not found:try again")}};
-    
-
 
     case 'getprice':
-      break;
+      let name = interaction.options.getString('id');
+
+      if(name === null){
+        await interaction.reply('No server ID given.');
+        break;
+      } else {
+        let serverData: {
+          [key: string]: GuildStockData
+        } = JSON.parse(fs.readFileSync(STOCKDATA).toString());
+
+        if(serverData[name]){
+          await interaction.reply(
+            Discord.bold(name)
+            + ": ₦"
+            + serverData[name].actualPrice.toFixed(2)
+          );
+          break;
+        } else {
+          await interaction.reply("Server not found");
+        }
+      }
 
     default:
       await interaction.reply(`Unrecognized command ${interaction.commandName}`);

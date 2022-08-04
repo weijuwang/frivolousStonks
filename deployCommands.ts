@@ -8,11 +8,25 @@ const rest = new REST({ version: '10' })
 	.setToken(process.env.DISCORD_TOKEN!);
 
 const commands = [
-	new SlashCommandBuilder().setName('ping').setDescription('Replies with pong!'),
-	new SlashCommandBuilder().setName('buy').setDescription('Replies with pong!'),
-	new SlashCommandBuilder().setName('getprice').addStringOption(option => option.setName('name').setDescription('Name of stock').setRequired(true)).setDescription('replies with price of given stock')
+
+  new SlashCommandBuilder()
+    .setName('ping')
+    .setDescription('Replies with pong!'),
+
+  new SlashCommandBuilder()
+    .setName('buy')
+    .setDescription('Buy a stock'),
+
+  new SlashCommandBuilder()
+    .setName('getprice')
+    .addStringOption(option => option
+      .setName('id')
+      .setDescription('Server id')
+      .setRequired(true)
+    )
+    .setDescription('View the price of a stock')
 ]
-	.map(command => command.toJSON());
+  .map(command => command.toJSON());
 
 // Add global commands
 rest
