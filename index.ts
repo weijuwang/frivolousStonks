@@ -104,9 +104,9 @@ schedule.scheduleJob('0 * * * * *', () => {
 
 
   // TODO "For each server the bot can see..."
-  {
+  client.guilds.cache.forEach(guild => {
     // TODO get this data from the actual server
-    let serverId: string = "12345";
+    let serverId: string = guild.id;
     let numMessages: number = 100; // in the last hour
     let numAuthors: number = 20; // in the last hour
     let numMembers: number = 50; // in the server right now
@@ -154,7 +154,7 @@ schedule.scheduleJob('0 * * * * *', () => {
         average: firstDataPoint
       };
     }
-  }
+  });
 
   // Write data back to the file
   fs.writeFileSync(STOCKDATA, JSON.stringify(serverData));
