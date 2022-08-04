@@ -24,7 +24,8 @@ import * as schedule from 'node-schedule';
 interface GuildStockData {
   data: number[],
   truePrice: number,
-  actualPrice: number
+  actualPrice: number,
+  name: string
 }
 
 interface GuildTempData {
@@ -67,14 +68,33 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
     case 'getprice':
       let name = interaction.options.getString('id');
 
+      let serverData: {
+        [key: string]: GuildStockData
+      } = JSON.parse(fs.readFileSync(STOCKDATA).toString());
       if(name === null){
-        await interaction.reply('No server ID given.');
-        break;
+        if(interaction.guild == null){
+            await interaction.reply("fail");
+            break;
+        } else{
+        if(serverData[interaction.guild.id]){
+          await interaction.reply(
+            Discord.bold(interaction.guild.id)
+            + ": ₦"
+            + serverData[interaction.guild.id].actualPrice.toFixed(2)
+          );
+          break;
+        } else{
+            await interaction.reply("server no found");
+            break;
+        }
+      }
       } else {
-        let serverData: {
-          [key: string]: GuildStockData
-        } = JSON.parse(fs.readFileSync(STOCKDATA).toString());
-
+        client.guilds.cache.forEach(guild => {
+          if(name == guild.name ){
+            name = guild.id;
+            //bad way of doing this, needs a replacement
+          }
+        });
         if(serverData[name]){
           await interaction.reply(
             Discord.bold(name)
@@ -84,8 +104,15 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
           break;
         } else {
           await interaction.reply("Server not found");
+          break;
         }
       }
+
+      case 'getid':
+        
+
+
+      
 
     default:
       await interaction.reply(`Unrecognized command ${interaction.commandName}`);
@@ -179,7 +206,8 @@ schedule.scheduleJob('0 * * * * *', () => {
       stockData[guild.id] = {
         data: [firstDataPoint],
         truePrice: firstDataPoint,
-        actualPrice: firstDataPoint
+        actualPrice: firstDataPoint,
+        name: guild.name,
       };
     }
   });
