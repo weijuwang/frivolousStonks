@@ -52,6 +52,7 @@ function update(counters: number, servername: string, numauthors: number, nummem
   //TODO: FILE WRITING
   let serverData = JSON.parse(fs.readFileSync('servercounts.json', 'utf8'));
   let serverLookup = serverData[servername];
+
   if (serverLookup != null) {
     let mesList = serverLookup.measurements;
     mesList.unshift(Math.log(nummembers) * (counter / numauthors));
