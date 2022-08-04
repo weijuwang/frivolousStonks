@@ -26,13 +26,18 @@ interface GuildStockData {
   truePrice: number,
   actualPrice: number
 }
+interface userData {
+  coins: number,
+  stocks_owned: {serverID:string, amount:number}
 
+}
 interface GuildTempData {
   authors: string[],
   numMessages: number
 }
 
 const STOCKDATA = "stockData.json";
+const USERDATA = "userData.json"
 const MAXDATAPOINTS = 24 * 60;
 const TRUEPRICEWEIGHT = 1; // where 1 = weight equal to the current actual price
 
@@ -63,7 +68,11 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
     case 'ping':
       await interaction.reply('pong');
       break;
-
+    //deploycommands.ts, define a command
+      //declare/initialize stockdata
+    case 'printalluserdata':
+      await interaction.reply(stockData);
+      break;
     case 'getprice':
       let ticker = interaction.options.getString('ticker');
 
@@ -90,6 +99,20 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
       }
 
       break;
+    case 'setticker':
+      let ourticker = interaction.options.getString('ticker')!;
+      let id = interaction.guildId!
+      let getserverData: {
+        [key: string]: GuildStockData
+      } = JSON.parse(fs.readFileSync(STOCKDATA).toString());
+      if(id in getserverData){
+        getserverData[ourticker] = getserverData[id];
+        delete getserverData[id];
+        fs.writeFileSync(STOCKDATA, JSON.stringify(getserverData));
+        await interaction.reply("Done.")
+      }
+       
+      
 
     default:
       await interaction.reply(`Unrecognized command ${interaction.commandName}`);
@@ -129,6 +152,10 @@ schedule.scheduleJob('0 * * * * *', () => {
   let stockData: {
     [key: string]: GuildStockData
   } = JSON.parse(fs.readFileSync(STOCKDATA).toString());
+  
+  let userData: {
+    [key: string]: userData
+  } = JSON.parse(fs.readFileSync(USERDATA).toString());
 
   client.guilds.cache.forEach(guild => {
 
@@ -178,6 +205,7 @@ schedule.scheduleJob('0 * * * * *', () => {
 
     } else {
       // This is the first time we've collected data from this server
+      //Guild.id can be a temp thing, ill make a command to set a ticker for a server
       const firstDataPoint = Math.log(guild.memberCount) * (numMessages / numAuthors);
 
       stockData[guild.id] = {

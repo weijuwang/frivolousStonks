@@ -20,11 +20,19 @@ const commands = [
   new SlashCommandBuilder()
     .setName('getprice')
     .addStringOption(option => option
-      .setName('name')
-      .setDescription('name')
+      .setName('ticker')
+      .setDescription('Stock ticker')
       .setRequired(false)
     )
     .setDescription('View the price of a stock'),
+
+  new SlashCommandBuilder()
+    .setName('setticker')
+    .addStringOption(option => option
+      .setName('ticker')
+      .setDescription('Stock ticker')
+      .setRequired(true)
+    )
 	
 ]
   .map(command => command.toJSON());
