@@ -9,6 +9,7 @@ const rest = new REST({ version: '10' })
 
 const commands = [
 	new SlashCommandBuilder().setName('ping').setDescription('Replies with pong!'),
+	new SlashCommandBuilder().setName('buy').setDescription('Replies with pong!'),
 ]
 	.map(command => command.toJSON());
 
