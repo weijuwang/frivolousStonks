@@ -24,8 +24,7 @@ import * as schedule from 'node-schedule';
 interface GuildStockData {
   data: number[],
   truePrice: number,
-  actualPrice: number,
-  name: string
+  actualPrice: number
 }
 
 interface GuildTempData {
@@ -89,12 +88,6 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
         }
       }
       } else {
-        client.guilds.cache.forEach(guild => {
-          if(name == guild.name ){
-            name = guild.id;
-            //bad way of doing this, needs a replacement
-          }
-        });
         if(serverData[name]){
           await interaction.reply(
             Discord.bold(name)
@@ -206,8 +199,7 @@ schedule.scheduleJob('0 * * * * *', () => {
       stockData[guild.id] = {
         data: [firstDataPoint],
         truePrice: firstDataPoint,
-        actualPrice: firstDataPoint,
-        name: guild.name,
+        actualPrice: firstDataPoint
       };
     }
   });
