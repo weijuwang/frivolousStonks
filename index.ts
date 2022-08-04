@@ -64,6 +64,22 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
     case 'ping':
       await interaction.reply('pong');
       break;
+    case 'getprice':
+      let name = interaction.options.getString('name');
+      if (name == null) {
+        await interaction.reply('name not specified:try again');
+        break;
+      }else{
+      let serverData: {
+        [key: string]: ServerStockData
+      } = JSON.parse(fs.readFileSync(STOCKDATA).toString());
+      if(serverData[name]){
+        await interaction.reply("Price of " + name + " :  ₦" + serverData[name].average.toFixed(2));
+        break;
+      } 
+      else{await interaction.reply("server not found:try again")}};
+    
+
 
     case 'getprice':
       break;
