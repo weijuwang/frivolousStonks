@@ -24,8 +24,7 @@ import * as schedule from 'node-schedule';
 interface GuildStockData {
   data: number[],
   truePrice: number,
-  actualPrice: number,
-  name: string
+  actualPrice: number
 }
 
 interface GuildTempData {
@@ -66,53 +65,28 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
       break;
 
     case 'getprice':
-      let name = interaction.options.getString('id');
+      let id = interaction.options.getString('id');
+
+      if(id === null)
+        id = interaction.guildId!;
 
       let serverData: {
         [key: string]: GuildStockData
       } = JSON.parse(fs.readFileSync(STOCKDATA).toString());
-      if(name === null){
-        if(interaction.guild == null){
-            await interaction.reply("fail");
-            break;
-        } else{
-        if(serverData[interaction.guild.id]){
-          await interaction.reply(
-            Discord.bold(interaction.guild.id)
-            + ": ₦"
-            + serverData[interaction.guild.id].actualPrice.toFixed(2)
-          );
-          break;
-        } else{
-            await interaction.reply("server no found");
-            break;
-        }
-      }
+
+      if(serverData[id]){
+        await interaction.reply(
+          Discord.bold(id)
+          + Discord.italic(interaction.guild!.name)
+          + ": ₦"
+          + serverData[id].actualPrice.toFixed(2)
+        );
+        break;
       } else {
-        client.guilds.cache.forEach(guild => {
-          if(name == guild.name ){
-            name = guild.id;
-            //bad way of doing this, needs a replacement
-          }
-        });
-        if(serverData[name]){
-          await interaction.reply(
-            Discord.bold(name)
-            + ": ₦"
-            + serverData[name].actualPrice.toFixed(2)
-          );
-          break;
-        } else {
-          await interaction.reply("Server not found");
-          break;
-        }
+        await interaction.reply('Server not found.');
       }
 
-      case 'getid':
-        
-
-
-      
+      break;
 
     default:
       await interaction.reply(`Unrecognized command ${interaction.commandName}`);
@@ -126,7 +100,7 @@ client.on('messageCreate', async (message: Discord.Message) => {
   if(message.author.bot)
     return;
 
-  let thisServerData = tempMsgData[message.guild!.id];
+  let thisServerData = tempMsgData[message.guildId!];
 
   if(thisServerData === undefined){
     thisServerData = {
@@ -142,7 +116,7 @@ client.on('messageCreate', async (message: Discord.Message) => {
 
   ++thisServerData.numMessages;
 
-  tempMsgData[message.guild!.id] = thisServerData;
+  tempMsgData[message.guildId!] = thisServerData;
 });
 
 // Currently, this updates EVERY MINUTE. When changing the frequency, remember to also modify MAXDATAPOINTS.
@@ -206,8 +180,7 @@ schedule.scheduleJob('0 * * * * *', () => {
       stockData[guild.id] = {
         data: [firstDataPoint],
         truePrice: firstDataPoint,
-        actualPrice: firstDataPoint,
-        name: guild.name,
+        actualPrice: firstDataPoint
       };
     }
   });
