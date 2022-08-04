@@ -106,7 +106,7 @@ schedule.scheduleJob('0 * * * * *', () => {
   // TODO "For each server the bot can see..."
   client.guilds.cache.forEach(guild => {
     // TODO get this data from the actual server
-    let serverId: string = guild.name;
+    let serverId: string = guild.nameAcronym;
     let numMessages: number = 100; // in the last hour
     let numAuthors: number = 20; // in the last hour
     let numMembers: number = 50; // in the server right now
