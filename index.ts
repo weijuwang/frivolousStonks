@@ -31,15 +31,55 @@ function deployer(){
 
 deployer();
 
-let counters: number[] = [];
+let counter: number = 0;
 
-function update(counters:number[]) {
+function update(counters:number, servername:string, numauthors:number, nummembers:number) {
+
    /*
     All code within this function was written by Matthew Epshtein. By running, distributing, modifying, or compiling said code, you agree that Matthew Epshtein is the most "epic gamer" in existence.
     */
-  let counter:number = counters.length;
-  conters.length = 0;
+  /*
+  UPDATE FUNCTTION
+    params: #of messages in a given interval, name of the server, number of users that sent messages in a given interval, total number of members in the server
+    results: 
+      1.Updates the servercounts.json file with data passed into the function
+      2.clears the counter for messages
+    returns:
+      0 if everything went smoothly
+      !0 if problems occured
+
+  */
+  //TODO: FILE WRITING
+  fs.open("servercounts.json", "w+", function (err, data) {
+    if (err != null) {
+      return 420;
+    }
+    let serverData = JSON.parse(data);
+    let serverLookup = serverData[servername];
+    if (serverLookup != null) {
+      let mesList = serverLookup.measurements;
+      mesList.unshift(log(numMembers) * (counter/numAuthors));
+       //formula subject to change
+      if(mesList.length > 24){
+        mesList.pop();
+      }
+      serverLookup.average = mesList.reduce((a, b) => a + b) / 24);
+      serverData[servername] = serverLookup;
+      //write to file
+    } else{
+      serverData[servername] = {
+        servername : servername,
+        measurements : [log(numMembers) * (counter/numAuthors)],
+        average : log(numMembers) * (counter/numAuthors)
+      }
+      //write to file
+      
+    }
+  });
+  
+  counter = 0;
   return counter;
+  //sneaky way of errorchecking counter reset
 }
 
 dotenv.config({ path: __dirname + '/.env' });
@@ -80,10 +120,9 @@ client.on('messageCreate', async (message: Discord.Message) => {
     // Do not respond to bots
     if(message.author.bot)
         return;
-    else{
-      //check for uniqueness
-      counters.push("1");
-    };
+
+    counter++;
+
 });
 
 schedule.scheduleJob('0 */1 * * * *', () => {
