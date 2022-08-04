@@ -74,7 +74,7 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
         [key: string]: GuildStockData
       } = JSON.parse(fs.readFileSync(STOCKDATA).toString());
 
-      if(serverData[id]){
+      if(id in serverData){
         await interaction.reply(
           Discord.bold(id)
           + Discord.italic(interaction.guild!.name)

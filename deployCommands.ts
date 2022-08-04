@@ -22,7 +22,7 @@ const commands = [
     .addStringOption(option => option
       .setName('name')
       .setDescription('name')
-      .setRequired(true)
+      .setRequired(false)
     )
     .setDescription('View the price of a stock'),
 	
