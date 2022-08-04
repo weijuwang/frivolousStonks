@@ -75,7 +75,7 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
         [key: string]: ServerStockData
       } = JSON.parse(fs.readFileSync(STOCKDATA).toString());
       if(serverData[name]){
-        await interaction.reply("Price of " + name + " :  ₦" + serverData[name].average.toString());
+        await interaction.reply("Price of " + name + " :  ₦" + serverData[name].average.toFixed(2));
         break;
       } 
       else{await interaction.reply("server not found:try again")};
