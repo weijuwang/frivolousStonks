@@ -1,10 +1,12 @@
 {
   "name": "frivolousstonks",
   "version": "1.0.0",
-  "description": ">Why?",
+  "description": "'Why?' why not?",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "tsc index.ts && node index.js",
+    "deployCommands": "tsc deployCommands.ts && node deployCommands.js"
   },
   "repository": {
     "type": "git",
@@ -18,7 +20,9 @@
   },
   "homepage": "https://github.com/weijuwang/frivolousStonks#readme",
   "dependencies": {
+    "@discordjs/rest": "^1.0.1",
     "discord.js": "^14.1.2",
-    "dotenv": "^16.0.1"
+    "dotenv": "^16.0.1",
+    "node-schedule": "^2.1.0"
   }
 }
