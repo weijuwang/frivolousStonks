@@ -65,21 +65,24 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
       break;
 
     case 'getprice':
-      let id = interaction.options.getString('id');
+      let ticker = interaction.options.getString('ticker');
 
-      if(id === null)
-        id = interaction.guildId!;
+      if(ticker === null)
+        ticker = interaction.guildId!;
+
+      let guildName = client.guilds.cache.get(ticker)?.name ?? "???";
 
       let serverData: {
         [key: string]: GuildStockData
       } = JSON.parse(fs.readFileSync(STOCKDATA).toString());
 
-      if(id in serverData){
+      if(ticker in serverData){
         await interaction.reply(
-          Discord.bold(id)
-          + Discord.italic(interaction.guild!.name)
+          Discord.bold(ticker)
+          + " "
+          + Discord.italic(guildName)
           + ": ₦"
-          + serverData[id].actualPrice.toFixed(2)
+          + serverData[ticker].actualPrice.toFixed(2)
         );
         break;
       } else {
