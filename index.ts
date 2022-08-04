@@ -65,6 +65,22 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
     case 'ping':
       await interaction.reply('pong');
       break;
+    case 'getprice':
+      let name = interaction.options.getString('name');
+      if (name == null) {
+        await interaction.reply('name not specified:try again');
+        break;
+      }
+      let serverData: {
+        [key: string]: ServerStockData
+      } = JSON.parse(fs.readFileSync(STOCKDATA).toString());
+      if(serverData[name]){
+        await interaction.reply("Price of " + name + " :  $" + serverData[name].average.toString());
+        break;
+      } 
+      else{await interaction.reply("server not found:try again")};
+    
+
 
     default:
       await interaction.reply(`Unrecognized command ${interaction.commandName}`);
@@ -85,6 +101,7 @@ schedule.scheduleJob('0 * * * * *', () => {
   let serverData: {
     [key: string]: ServerStockData
   } = JSON.parse(fs.readFileSync(STOCKDATA).toString());
+
 
   // TODO "For each server the bot can see..."
   {
@@ -124,7 +141,7 @@ schedule.scheduleJob('0 * * * * *', () => {
       thisServer.data = newData;
 
       // Compute the average of all 24 data points
-      thisServer.average = newData.reduce((a: number, b: number) => a + b) / 24;
+      thisServer.average = newData.reduce((a: number, b: number) => a + b) / newData.length;
 
       serverData[serverId] = thisServer;
 
