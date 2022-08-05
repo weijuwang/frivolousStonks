@@ -38,6 +38,7 @@ const client: Discord.Client = new Discord.Client({
 ////////////////////////////////////////////////////////////////////////////////
 
 const STOCKDATA = 'stockData.json';
+const USERDATA = "userData.json"
 const TICKERS = 'tickers.json';
 const BACKWARDSTICKERS = 'backwardsTickers.json';
 const MAXDATAPOINTS = 24 * 60;
@@ -59,6 +60,10 @@ interface GuildStockData {
 interface GuildTempData {
   authors: string[],
   numMessages: number
+}
+interface GetUserData {
+  coins: number,
+  stocks_owned: {serverID:string, amount:number}
 }
 
 function getCurrTimestamp(){
@@ -187,7 +192,16 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
     case 'ping':
       await interaction.reply('pong');
       break;
+          
+    case 'countcoins':
+      let userData: {
+        [key: string]: GetUserData
+      } = JSON.parse(fs.readFileSync(USERDATA).toString());
+      /*let user = interaction.guild.cache.get('id');
 
+      await interaction.reply("₦" + userData[user].coins); */
+      break;
+          
     case 'getprice':
 
       if(interaction.guild === null){
