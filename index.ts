@@ -23,6 +23,7 @@ import * as schedule from 'node-schedule';
 
 const STOCKDATA = "stockData.json";
 const TICKERS = "tickers.json";
+const BACKWARDSTICKERS = "backwardsTickers.json";
 const MAXDATAPOINTS = 24 * 60;
 const TRUEPRICEWEIGHT = 0.5; // where 1 = weight equal to the current actual price
 
@@ -86,8 +87,6 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
       if(tickerOrId === null)
         tickerOrId = interaction.guildId!;
 
-      const originalTickerOrId = tickerOrId; // copy of original, for display purposes
-
       // Assume `tickerOrId` is a guild ID. Find the guild, if any, that it represents
       let guild = client.guilds.cache.get(tickerOrId);
 
@@ -112,7 +111,7 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
       }
 
       await interaction.reply(
-        Discord.bold(originalTickerOrId!)
+        Discord.bold(readJSONFile(BACKWARDSTICKERS)[tickerOrId!.toUpperCase()] ?? interaction.guildId!)
         + " "
         + Discord.italic(guild!.name)
         + ": ₦"
@@ -135,6 +134,7 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
 
       const ticker = interaction.options.getString('ticker')?.toUpperCase();
       const tickers = readJSONFile(TICKERS);
+      const backwardsTickers = readJSONFile(BACKWARDSTICKERS);
 
       if(ticker === undefined){
         await interaction.reply("No ticker provided.");
@@ -148,10 +148,13 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
 
       // TODO Check ticker constraints
 
+      delete tickers[backwardsTickers[interaction.guildId!]];
       tickers[ticker] = interaction.guildId!;
+      backwardsTickers[interaction.guildId!] = ticker;
       writeJSONFile(TICKERS, tickers);
+      writeJSONFile(BACKWARDSTICKERS, backwardsTickers);
 
-      await interaction.reply(`This server's ticker is now "${ticker}".`)
+      await interaction.reply(`This server's ticker is now "${ticker}".`);
 
       break;
 

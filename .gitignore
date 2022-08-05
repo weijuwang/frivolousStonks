@@ -6,3 +6,4 @@ replit.nix
 .replit
 stockData.json
 tickers.json
+backwardsTickers.json
