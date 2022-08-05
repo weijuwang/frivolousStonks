@@ -61,6 +61,15 @@ const commands = [
     .setDescription('View the price of a stock.'),
 
   new SlashCommandBuilder()
+    .setName('graph')
+    .addStringOption(option => option
+      .setName('ticker')
+      .setDescription('Stock ticker')
+      .setRequired(false)
+    )
+    .setDescription('View a graph of a stock\'s price over time.'),
+
+  new SlashCommandBuilder()
     .setName('setticker')
     .addStringOption(option => option
       .setName('ticker')

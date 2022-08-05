@@ -21,27 +21,48 @@ import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as schedule from 'node-schedule';
 import * as plotlyConstructor from 'plotly';
+let moment = require('moment');
 
-let plotly = require('plotly')("weijuwang", );
+// Import environment variables
+dotenv.config({ path: __dirname + '/.env' });
+
+let plotly = require('plotly')(process.env.PLOTLY_USERNAME, process.env.PLOTLY_APIKEY);
+
+const client: Discord.Client = new Discord.Client({
+  intents: [
+    Discord.GatewayIntentBits.Guilds,
+    Discord.GatewayIntentBits.GuildMessages,
+  ]
+});
+
+////////////////////////////////////////////////////////////////////////////////
 
 const STOCKDATA = 'stockData.json';
 const TICKERS = 'tickers.json';
 const BACKWARDSTICKERS = 'backwardsTickers.json';
 const MAXDATAPOINTS = 24 * 60;
-const TRUEPRICEWEIGHT = 0.25; // where 1 = weight equal to the current actual price
+const TRUEPRICEWEIGHT = 0.1; // where 1 = weight equal to the current actual price
 
 const trueStockPrice = (memberCount: number, numMessages: number, numAuthors: number) =>
   Math.log(memberCount) * (numMessages / numAuthors);
 
+////////////////////////////////////////////////////////////////////////////////
+
 interface GuildStockData {
   data: number[],
   truePrice: number,
-  actualPrice: number
+  actualPrice: number,
+  priceHistoryTimestamps: string[],
+  priceHistory: number[]
 }
 
 interface GuildTempData {
   authors: string[],
   numMessages: number
+}
+
+function getCurrTimestamp(){
+  return moment().format('YYYY-MM-DD HH:mm:ss');
 }
 
 function readJSONFile(filename: string){
@@ -52,19 +73,105 @@ function writeJSONFile(filename: string, object: Object){
   fs.writeFileSync(filename, JSON.stringify(object));
 }
 
-// Import environment variables
-dotenv.config({ path: __dirname + '/.env' });
+function getGuild(tickerOrId: string | null, interaction: Discord.Interaction): Discord.Guild | undefined | null {
 
-const client: Discord.Client = new Discord.Client({
-  intents: [
-    Discord.GatewayIntentBits.Guilds,
-    Discord.GatewayIntentBits.GuildMessages,
-  ]
-});
+  /*
+  If a guild is returned, it means there is a guild with this ID or ticker.
+  If `undefined` is returned, it means no guild exists with this ID or ticker.
+  If `null` is returned, it means this ticker is on record as having existed but the bot can no longer see it.
+  */
+
+  // If no ticker was given
+  if(tickerOrId === null)
+    tickerOrId = interaction.guildId!;
+
+  // Assume `tickerOrId` is a guild ID. Find the guild, if any, that it represents
+  let guild = client.guilds.cache.get(tickerOrId);
+
+  // If no guild with the ID in `tickerOrId` was found
+  if(guild === undefined){
+
+    // Get the ID that `tickerOrId` represents
+    tickerOrId = readJSONFile(TICKERS)[tickerOrId.toUpperCase()];
+
+    if(tickerOrId === undefined)
+      return undefined;
+
+    // Find the guild with that ID
+    guild = client.guilds.cache.get(tickerOrId!);
+
+    if(guild === undefined)
+      return null;
+  }
+
+  return guild;
+}
+
+function adjustStockPrice(guild: Discord.Guild){
+
+  // Read data
+  let stockData: {
+    [key: string]: GuildStockData
+  } = readJSONFile(STOCKDATA);
+
+  let numMessages = 0;
+  let numAuthors = 1; // this must be 1 to avoid divide by zero
+
+  if(guild.id in tempMsgData){
+    numAuthors = tempMsgData[guild.id].authors.length;
+    numMessages = tempMsgData[guild.id].numMessages;
+  }
+
+  let thisServer = stockData[guild.id];
+
+  if(thisServer != null){
+
+    let newData = thisServer.data;
+
+    // Add data from the last hour
+    newData.unshift(trueStockPrice(guild.memberCount, numMessages, numAuthors));
+
+    // Remove the oldest data point (from exactly 24 hours ago)
+    if(newData.length > MAXDATAPOINTS)
+      newData.pop();
+
+    thisServer.data = newData;
+
+    // Compute the average of all data points
+    thisServer.truePrice = newData.reduce((a: number, b: number) => a + b) / newData.length;
+
+    // The true price pulls the actual price towards it with a certain weight
+    thisServer.actualPrice =
+      (thisServer.actualPrice + thisServer.truePrice * TRUEPRICEWEIGHT)
+      / (TRUEPRICEWEIGHT + 1);
+
+    thisServer.priceHistory.push(thisServer.actualPrice);
+    thisServer.priceHistoryTimestamps.push(getCurrTimestamp());
+
+    stockData[guild.id] = thisServer;
+
+  } else {
+    // This is the first time we've collected data from this server
+    const firstDataPoint = trueStockPrice(guild.memberCount, numMessages, numAuthors);
+
+    stockData[guild.id] = {
+      data: [firstDataPoint],
+      truePrice: firstDataPoint,
+      actualPrice: firstDataPoint,
+      priceHistoryTimestamps: [getCurrTimestamp()],
+      priceHistory: [firstDataPoint]
+    };
+  }
+
+  // Write data back to the file
+  writeJSONFile(STOCKDATA, stockData);
+}
 
 let tempMsgData: {
   [key: string]: GuildTempData
 } = {};
+
+////////////////////////////////////////////////////////////////////////////////
 
 client.on('ready', () => {
   console.log(`Add with https://discord.com/api/oauth2/authorize?client_id=${client!.user!.id}&permissions=2147485697&scope=bot`);
@@ -89,41 +196,38 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
       }
 
       let tickerOrId = interaction.options.getString('ticker');
+      let guild = getGuild(tickerOrId, interaction);
 
-      // If no ticker was given
-      if(tickerOrId === null)
-        tickerOrId = interaction.guildId!;
-
-      // Assume `tickerOrId` is a guild ID. Find the guild, if any, that it represents
-      let guild = client.guilds.cache.get(tickerOrId);
-
-      // If no guild with the ID in `tickerOrId` was found
-      if(guild === undefined){
-
-        // Get the ID that `tickerOrId` represents
-        tickerOrId = readJSONFile(TICKERS)[tickerOrId.toUpperCase()];
-
-        if(tickerOrId === undefined){
-          await interaction.reply('Stock ticker or server ID not found.');
-          break;
-        }
-
-        // Find the guild with that ID
-        guild = client.guilds.cache.get(tickerOrId!);
-
-        if(guild === undefined){
+      switch(guild){
+        case null:
           await interaction.reply('Server not found (it is likely no longer trading).');
-          break;
-        }
+          return;
+
+        case undefined:
+          await interaction.reply('Stock ticker or server ID not found.');
+          return;
+      }
+
+      const serverStockData = readJSONFile(STOCKDATA)[guild.id];
+
+      if(serverStockData === undefined){
+        await interaction.reply('This server does not have a stock price yet (it may take up to a minute before it gets one, if it was just added to the market).');
+        break;
       }
 
       await interaction.reply(
-        Discord.bold(readJSONFile(BACKWARDSTICKERS)[tickerOrId!.toUpperCase()] ?? interaction.guildId!)
+        Discord.bold(readJSONFile(BACKWARDSTICKERS)[guild.id.toUpperCase()] ?? guild.id)
         + ' '
-        + Discord.italic(guild!.name)
+        + Discord.italic(guild.name)
         + ': ₦'
-        + readJSONFile(STOCKDATA)[tickerOrId!].actualPrice.toFixed(0)
+        + serverStockData.actualPrice.toFixed(2)
       );
+
+      break;
+
+    case 'graph':
+
+      // TODO /graph
 
       break;
 
@@ -135,7 +239,7 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
       }
 
       if(!(interaction.member!.permissions as Discord.PermissionsBitField).has('ManageGuild')){
-        await interaction.reply('You do not have the permissions to run this command.');
+        await interaction.reply('You do not have permission to run this command.');
         break;
       }
 
@@ -196,67 +300,16 @@ client.on('messageCreate', async (message: Discord.Message) => {
   tempMsgData[message.guildId!] = thisServerData;
 });
 
-// Currently, this updates EVERY MINUTE. When changing the frequency, remember to also modify MAXDATAPOINTS.
+client.on('guildCreate', adjustStockPrice);
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Currently, this updates EVERY MINUTE, on the minute. When changing the frequency, remember to also modify MAXDATAPOINTS.
 schedule.scheduleJob('0 * * * * *', () => {
-
-  // Read data
-  let stockData: {
-    [key: string]: GuildStockData
-  } = readJSONFile(STOCKDATA);
-
-  client.guilds.cache.forEach(guild => {
-
-    let numMessages = 0;
-    let numAuthors = 1; // this must be 1 to avoid divide by zero
-
-    if(guild.id in tempMsgData){
-      numAuthors = tempMsgData[guild.id].authors.length;
-      numMessages = tempMsgData[guild.id].numMessages;
-    }
-
-    let thisServer = stockData[guild.id];
-
-    if(thisServer != null){
-
-      let newData = thisServer.data;
-
-      // Add data from the last hour
-      newData.unshift(trueStockPrice(guild.memberCount, numMessages, numAuthors));
-
-      // Remove the oldest data point (from exactly 24 hours ago)
-      if(newData.length > MAXDATAPOINTS)
-        newData.pop();
-
-      thisServer.data = newData;
-
-      // Compute the average of all data points
-      thisServer.truePrice = newData.reduce((a: number, b: number) => a + b) / newData.length;
-
-      // The true price pulls the actual price towards it with a certain weight
-      thisServer.actualPrice =
-        (thisServer.actualPrice + thisServer.truePrice * TRUEPRICEWEIGHT)
-        / (TRUEPRICEWEIGHT + 1);
-
-      stockData[guild.id] = thisServer;
-
-    } else {
-      // This is the first time we've collected data from this server
-      const firstDataPoint = trueStockPrice(guild.memberCount, numMessages, numAuthors);
-
-      stockData[guild.id] = {
-        data: [firstDataPoint],
-        truePrice: firstDataPoint,
-        actualPrice: firstDataPoint
-      };
-    }
-  });
-
-  // Write data back to the file
-  writeJSONFile(STOCKDATA, stockData);
-
+  client.guilds.cache.forEach(adjustStockPrice);
   tempMsgData = {};
-
-  readJSONFile(STOCKDATA);
 });
+
+////////////////////////////////////////////////////////////////////////////////
 
 client.login(process.env.DISCORD_TOKEN);
