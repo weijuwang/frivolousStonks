@@ -15,17 +15,48 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('buy')
-    .setDescription('Buy a stock'),
+    .setDescription('Buy stocks')
+    .addStringOption(option => option
+      .setName('ticker')
+      .setDescription('Stock ticker')
+      .setRequired(true)
+    )
+    .addIntegerOption(option => option
+      .setName('volume')
+      .setDescription('Number of stocks to buy')
+      .setRequired(false) // Default 1
+    ),
+
+  new SlashCommandBuilder()
+    .setName('sell')
+    .setDescription('Sell stocks')
+    .addStringOption(option => option
+      .setName('ticker')
+      .setDescription('Stock ticker')
+      .setRequired(true)
+    )
+    .addIntegerOption(option => option
+      .setName('volume')
+      .setDescription('Number of stocks to sell')
+      .setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName('getprice')
     .addStringOption(option => option
-      .setName('name')
-      .setDescription('name')
+      .setName('ticker')
+      .setDescription('Stock ticker')
       .setRequired(false)
     )
     .setDescription('View the price of a stock'),
-	
+
+  new SlashCommandBuilder()
+    .setName('setticker')
+    .addStringOption(option => option
+      .setName('ticker')
+      .setDescription('Stock ticker or server ID')
+      .setRequired(true)
+    )
 ]
   .map(command => command.toJSON());
 

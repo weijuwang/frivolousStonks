@@ -21,6 +21,11 @@ import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as schedule from 'node-schedule';
 
+const STOCKDATA = "stockData.json";
+const TICKERS = "tickers.json";
+const MAXDATAPOINTS = 24 * 60;
+const TRUEPRICEWEIGHT = 0.5; // where 1 = weight equal to the current actual price
+
 interface GuildStockData {
   data: number[],
   truePrice: number,
@@ -32,9 +37,13 @@ interface GuildTempData {
   numMessages: number
 }
 
-const STOCKDATA = "stockData.json";
-const MAXDATAPOINTS = 24 * 60;
-const TRUEPRICEWEIGHT = 1; // where 1 = weight equal to the current actual price
+function readJSONFile(filename: string){
+  return JSON.parse(fs.readFileSync(filename).toString());
+}
+
+function writeJSONFile(filename: string, object: Object){
+  fs.writeFileSync(filename, JSON.stringify(object));
+}
 
 let tempMsgData: {
   [key: string]: GuildTempData
@@ -65,35 +74,85 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
       break;
 
     case 'getprice':
-      let ticker = interaction.options.getString('ticker');
 
-      if(ticker === null)
-        ticker = interaction.guildId!;
-
-      let guildName = client.guilds.cache.get(ticker)?.name ?? "???";
-
-      let serverData: {
-        [key: string]: GuildStockData
-      } = JSON.parse(fs.readFileSync(STOCKDATA).toString());
-
-      if(ticker in serverData){
-        await interaction.reply(
-          Discord.bold(ticker)
-          + " "
-          + Discord.italic(guildName)
-          + ": ₦"
-          + serverData[ticker].actualPrice.toFixed(2)
-        );
+      if(interaction.guild === null){
+        await interaction.reply("This command cannot be used in DMs.");
         break;
-      } else {
-        await interaction.reply('Server not found.');
       }
+
+      let tickerOrId = interaction.options.getString('ticker');
+
+      // If no ticker was given
+      if(tickerOrId === null)
+        tickerOrId = interaction.guildId!;
+
+      const originalTickerOrId = tickerOrId; // copy of original, for display purposes
+
+      // Assume `tickerOrId` is a guild ID. Find the guild, if any, that it represents
+      let guild = client.guilds.cache.get(tickerOrId);
+
+      // If no guild with the ID in `tickerOrId` was found
+      if(guild === undefined){
+
+        // Get the ID that `tickerOrId` represents
+        tickerOrId = readJSONFile(TICKERS)[tickerOrId.toUpperCase()];
+
+        if(tickerOrId === undefined){
+          await interaction.reply("Stock ticker or server ID not found.");
+          break;
+        }
+
+        // Find the guild with that ID
+        guild = client.guilds.cache.get(tickerOrId!);
+
+        if(guild === undefined){
+          await interaction.reply("Server not found (it is likely no longer trading).");
+          break;
+        }
+      }
+
+      await interaction.reply(
+        Discord.bold(originalTickerOrId!)
+        + " "
+        + Discord.italic(guild!.name)
+        + ": ₦"
+        + readJSONFile(STOCKDATA)[tickerOrId!].actualPrice.toFixed(2)
+      );
+
+      break;
+
+    case 'setticker':
+
+      if(interaction.guild === null){
+        await interaction.reply("This command cannot be used in DMs.");
+        break;
+      }
+
+      const ticker = interaction.options.getString('ticker')?.toUpperCase();
+      const tickers = readJSONFile(TICKERS);
+
+      if(ticker === undefined){
+        await interaction.reply("No ticker provided.");
+        break;
+      }
+
+      if(tickers[ticker] !== undefined){
+        await interaction.reply("That ticker is already being used.");
+        break;
+      }
+
+      // TODO Check ticker constraints
+
+      tickers[ticker] = interaction.guildId!;
+      writeJSONFile(TICKERS, tickers);
+
+      await interaction.reply(`This server's ticker is now "${ticker}".`)
 
       break;
 
     default:
-      await interaction.reply(`Unrecognized command ${interaction.commandName}`);
-        break;
+      await interaction.reply(`Unknown command ${interaction.commandName}`);
+      break;
   }
 });
 
@@ -128,7 +187,7 @@ schedule.scheduleJob('0 * * * * *', () => {
   // Read data
   let stockData: {
     [key: string]: GuildStockData
-  } = JSON.parse(fs.readFileSync(STOCKDATA).toString());
+  } = readJSONFile(STOCKDATA);
 
   client.guilds.cache.forEach(guild => {
 
@@ -189,7 +248,7 @@ schedule.scheduleJob('0 * * * * *', () => {
   });
 
   // Write data back to the file
-  fs.writeFileSync(STOCKDATA, JSON.stringify(stockData));
+  writeJSONFile(STOCKDATA, stockData);
 
   tempMsgData = {};
 });
