@@ -128,6 +128,11 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
         break;
       }
 
+      if(!(interaction.member!.permissions as Discord.PermissionsBitField).has('ManageGuild')){
+        await interaction.reply("You do not have the permissions to run this command.");
+        break;
+      }
+
       const ticker = interaction.options.getString('ticker')?.toUpperCase();
       const tickers = readJSONFile(TICKERS);
 
