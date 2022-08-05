@@ -20,12 +20,15 @@ import * as Discord from 'discord.js';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as schedule from 'node-schedule';
+import * as plotlyConstructor from 'plotly';
 
-const STOCKDATA = "stockData.json";
-const TICKERS = "tickers.json";
-const BACKWARDSTICKERS = "backwardsTickers.json";
+let plotly = require('plotly')("weijuwang", );
+
+const STOCKDATA = 'stockData.json';
+const TICKERS = 'tickers.json';
+const BACKWARDSTICKERS = 'backwardsTickers.json';
 const MAXDATAPOINTS = 24 * 60;
-const TRUEPRICEWEIGHT = 0.1; // where 1 = weight equal to the current actual price
+const TRUEPRICEWEIGHT = 0.25; // where 1 = weight equal to the current actual price
 
 interface GuildStockData {
   data: number[],
@@ -46,10 +49,7 @@ function writeJSONFile(filename: string, object: Object){
   fs.writeFileSync(filename, JSON.stringify(object));
 }
 
-let tempMsgData: {
-  [key: string]: GuildTempData
-} = {};
-
+// Import environment variables
 dotenv.config({ path: __dirname + '/.env' });
 
 const client: Discord.Client = new Discord.Client({
@@ -58,6 +58,10 @@ const client: Discord.Client = new Discord.Client({
     Discord.GatewayIntentBits.GuildMessages,
   ]
 });
+
+let tempMsgData: {
+  [key: string]: GuildTempData
+} = {};
 
 client.on('ready', () => {
   console.log(`Add with https://discord.com/api/oauth2/authorize?client_id=${client!.user!.id}&permissions=2147485697&scope=bot`);
@@ -77,7 +81,7 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
     case 'getprice':
 
       if(interaction.guild === null){
-        await interaction.reply("This command cannot be used in DMs.");
+        await interaction.reply('This command cannot be used in DMs.');
         break;
       }
 
@@ -97,7 +101,7 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
         tickerOrId = readJSONFile(TICKERS)[tickerOrId.toUpperCase()];
 
         if(tickerOrId === undefined){
-          await interaction.reply("Stock ticker or server ID not found.");
+          await interaction.reply('Stock ticker or server ID not found.');
           break;
         }
 
@@ -105,16 +109,16 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
         guild = client.guilds.cache.get(tickerOrId!);
 
         if(guild === undefined){
-          await interaction.reply("Server not found (it is likely no longer trading).");
+          await interaction.reply('Server not found (it is likely no longer trading).');
           break;
         }
       }
 
       await interaction.reply(
         Discord.bold(readJSONFile(BACKWARDSTICKERS)[tickerOrId!.toUpperCase()] ?? interaction.guildId!)
-        + " "
+        + ' '
         + Discord.italic(guild!.name)
-        + ": ₦"
+        + ': ₦'
         + readJSONFile(STOCKDATA)[tickerOrId!].actualPrice.toFixed(2)
       );
 
@@ -123,12 +127,12 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
     case 'setticker':
 
       if(interaction.guild === null){
-        await interaction.reply("This command cannot be used in DMs.");
+        await interaction.reply('This command cannot be used in DMs.');
         break;
       }
 
       if(!(interaction.member!.permissions as Discord.PermissionsBitField).has('ManageGuild')){
-        await interaction.reply("You do not have the permissions to run this command.");
+        await interaction.reply('You do not have the permissions to run this command.');
         break;
       }
 
@@ -137,12 +141,12 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
       const backwardsTickers = readJSONFile(BACKWARDSTICKERS);
 
       if(ticker === undefined){
-        await interaction.reply("No ticker provided.");
+        await interaction.reply('No ticker provided.');
         break;
       }
 
       if(tickers[ticker] !== undefined){
-        await interaction.reply("That ticker is already being used.");
+        await interaction.reply('That ticker is already being used.');
         break;
       }
 
@@ -207,17 +211,6 @@ schedule.scheduleJob('0 * * * * *', () => {
       numMessages = tempMsgData[guild.id].numMessages;
     }
 
-    /*
-    UPDATE FUNCTION
-      params: # of messages in a given interval, name of the server, number of users that sent messages in a given interval, total number of members in the server
-      results: 
-        1.Updates the servercounts.json file with data passed into the function
-        2.clears the counter for messages
-      returns:
-        0 if everything went smoothly
-        !0 if problems occured
-    */
-
     let thisServer = stockData[guild.id];
 
     if(thisServer != null){
@@ -259,6 +252,8 @@ schedule.scheduleJob('0 * * * * *', () => {
   writeJSONFile(STOCKDATA, stockData);
 
   tempMsgData = {};
+
+  readJSONFile(STOCKDATA);
 });
 
 client.login(process.env.DISCORD_TOKEN);

@@ -10,12 +10,12 @@ const rest = new REST({ version: '10' })
 const commands = [
 
   new SlashCommandBuilder()
-    .setName('ping')     
+    .setName('ping')
     .setDescription('Replies with pong!'),
 
   new SlashCommandBuilder()
     .setName('buy')
-    .setDescription('Buy stocks')
+    .setDescription('Buy stocks. If you don\'t specify a price, stocks will be bought for whatever prices are available')
     .addStringOption(option => option
       .setName('ticker')
       .setDescription('Stock ticker')
@@ -25,11 +25,16 @@ const commands = [
       .setName('volume')
       .setDescription('Number of stocks to buy')
       .setRequired(false) // Default 1
+    )
+    .addIntegerOption(option => option
+      .setName('price')
+      .setDescription('Price to buy the stock at. Generally slower since you must wait for available stock at your price')
+      .setRequired(false)
     ),
 
   new SlashCommandBuilder()
     .setName('sell')
-    .setDescription('Sell stocks')
+    .setDescription('Sell stocks. If you don\'t specify a price, your stock will be sold for whatever prices are available')
     .addStringOption(option => option
       .setName('ticker')
       .setDescription('Stock ticker')
@@ -39,6 +44,11 @@ const commands = [
       .setName('volume')
       .setDescription('Number of stocks to sell')
       .setRequired(true)
+    )
+    .addIntegerOption(option => option
+      .setName('price')
+      .setDescription('Price to sell the stock at. Generally slower since you must wait for available stock at your price')
+      .setRequired(false)
     ),
 
   new SlashCommandBuilder()
@@ -48,7 +58,7 @@ const commands = [
       .setDescription('Stock ticker')
       .setRequired(false)
     )
-    .setDescription('View the price of a stock'),
+    .setDescription('View the price of a stock.'),
 
   new SlashCommandBuilder()
     .setName('setticker')
@@ -57,6 +67,7 @@ const commands = [
       .setDescription('Stock ticker or server ID')
       .setRequired(true)
     )
+    .setDescription('Set the ticker for this server.')
 ]
   .map(command => command.toJSON());
 
