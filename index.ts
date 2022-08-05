@@ -30,6 +30,9 @@ const BACKWARDSTICKERS = 'backwardsTickers.json';
 const MAXDATAPOINTS = 24 * 60;
 const TRUEPRICEWEIGHT = 0.25; // where 1 = weight equal to the current actual price
 
+const trueStockPrice = (memberCount: number, numMessages: number, numAuthors: number) =>
+  Math.log(memberCount) * (numMessages / numAuthors);
+
 interface GuildStockData {
   data: number[],
   truePrice: number,
@@ -119,7 +122,7 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
         + ' '
         + Discord.italic(guild!.name)
         + ': ₦'
-        + readJSONFile(STOCKDATA)[tickerOrId!].actualPrice.toFixed(2)
+        + readJSONFile(STOCKDATA)[tickerOrId!].actualPrice.toFixed(0)
       );
 
       break;
@@ -218,7 +221,7 @@ schedule.scheduleJob('0 * * * * *', () => {
       let newData = thisServer.data;
 
       // Add data from the last hour
-      newData.unshift(Math.log(guild.memberCount) * (numMessages / numAuthors));
+      newData.unshift(trueStockPrice(guild.memberCount, numMessages, numAuthors));
 
       // Remove the oldest data point (from exactly 24 hours ago)
       if(newData.length > MAXDATAPOINTS)
@@ -238,7 +241,7 @@ schedule.scheduleJob('0 * * * * *', () => {
 
     } else {
       // This is the first time we've collected data from this server
-      const firstDataPoint = Math.log(guild.memberCount) * (numMessages / numAuthors);
+      const firstDataPoint = trueStockPrice(guild.memberCount, numMessages, numAuthors);
 
       stockData[guild.id] = {
         data: [firstDataPoint],
