@@ -25,7 +25,7 @@ const STOCKDATA = "stockData.json";
 const TICKERS = "tickers.json";
 const BACKWARDSTICKERS = "backwardsTickers.json";
 const MAXDATAPOINTS = 24 * 60;
-const TRUEPRICEWEIGHT = 0.5; // where 1 = weight equal to the current actual price
+const TRUEPRICEWEIGHT = 0.1; // where 1 = weight equal to the current actual price
 
 interface GuildStockData {
   data: number[],
