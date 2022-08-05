@@ -37,23 +37,29 @@ const client: Discord.Client = new Discord.Client({
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const STOCKDATA = 'stockData.json';
-const TICKERS = 'tickers.json';
-const BACKWARDSTICKERS = 'backwardsTickers.json';
+const DATAFOLDER = 'data/';
+const STOCKDATA = DATAFOLDER + 'stockData';
+const TICKERS = DATAFOLDER + 'tickers';
+const BACKWARDSTICKERS = DATAFOLDER + 'backwardsTickers';
+
 const MAXDATAPOINTS = 24 * 60;
 const TRUEPRICEWEIGHT = 0.1; // where 1 = weight equal to the current actual price
+const DEFAULTNUMSHARES = 100;
+const PUBLICAVAILSHARES = 2/3; // The portion of shares available to the public at any given time
 
 const trueStockPrice = (memberCount: number, numMessages: number, numAuthors: number) =>
-  Math.log(memberCount) * (numMessages / numAuthors);
+  10 * Math.log(memberCount) * (numMessages / numAuthors);
 
 ////////////////////////////////////////////////////////////////////////////////
 
 interface GuildStockData {
-  data: number[],
+  truePriceHistory: number[],
   truePrice: number,
   actualPrice: number,
-  priceHistoryTimestamps: string[],
-  priceHistory: number[]
+  actualPriceHistoryTimestamps: string[],
+  actualPriceHistory: number[],
+  numShares: number,
+  sharesLeft: number
 }
 
 interface GuildTempData {
@@ -61,16 +67,32 @@ interface GuildTempData {
   numMessages: number
 }
 
+interface OrderBookQueueEntry {
+  userId: string, // user making the order
+  guildId: string, // ID of the guild of the stock to be bought/sold
+  volume: number
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 function getCurrTimestamp(){
   return moment().format('YYYY-MM-DD HH:mm:ss');
 }
 
 function readJSONFile(filename: string){
-  return JSON.parse(fs.readFileSync(filename).toString());
+  return JSON.parse(fs.readFileSync(filename + '.json').toString());
 }
 
 function writeJSONFile(filename: string, object: Object){
-  fs.writeFileSync(filename, JSON.stringify(object));
+  fs.writeFileSync(filename + '.json', JSON.stringify(object));
+}
+
+function readOrderBook(guildId: string){
+  return readJSONFile(DATAFOLDER + 'orderBooks/' + guildId);
+}
+
+function writeOrderBook(guildId: string, object: Object){
+  writeJSONFile(DATAFOLDER + 'orderBooks/' + guildId, object);
 }
 
 function getGuild(tickerOrId: string | null, interaction: Discord.Interaction): Discord.Guild | undefined | null {
@@ -126,7 +148,7 @@ function adjustStockPrice(guild: Discord.Guild){
 
   if(thisServer != null){
 
-    let newData = thisServer.data;
+    let newData = thisServer.truePriceHistory;
 
     // Add data from the last hour
     newData.unshift(trueStockPrice(guild.memberCount, numMessages, numAuthors));
@@ -135,7 +157,7 @@ function adjustStockPrice(guild: Discord.Guild){
     if(newData.length > MAXDATAPOINTS)
       newData.pop();
 
-    thisServer.data = newData;
+    thisServer.truePriceHistory = newData;
 
     // Compute the average of all data points
     thisServer.truePrice = newData.reduce((a: number, b: number) => a + b) / newData.length;
@@ -145,8 +167,8 @@ function adjustStockPrice(guild: Discord.Guild){
       (thisServer.actualPrice + thisServer.truePrice * TRUEPRICEWEIGHT)
       / (TRUEPRICEWEIGHT + 1);
 
-    thisServer.priceHistory.push(thisServer.actualPrice);
-    thisServer.priceHistoryTimestamps.push(getCurrTimestamp());
+    thisServer.actualPriceHistory.push(thisServer.actualPrice);
+    thisServer.actualPriceHistoryTimestamps.push(getCurrTimestamp());
 
     stockData[guild.id] = thisServer;
 
@@ -155,11 +177,13 @@ function adjustStockPrice(guild: Discord.Guild){
     const firstDataPoint = trueStockPrice(guild.memberCount, numMessages, numAuthors);
 
     stockData[guild.id] = {
-      data: [firstDataPoint],
+      truePriceHistory: [firstDataPoint],
       truePrice: firstDataPoint,
       actualPrice: firstDataPoint,
-      priceHistoryTimestamps: [getCurrTimestamp()],
-      priceHistory: [firstDataPoint]
+      actualPriceHistoryTimestamps: [getCurrTimestamp()],
+      actualPriceHistory: [firstDataPoint],
+      numShares: DEFAULTNUMSHARES,
+      sharesLeft: DEFAULTNUMSHARES
     };
   }
 
@@ -184,11 +208,12 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
 
   switch(interaction.commandName){
 
-    case 'ping':
+    case 'ping': {
       await interaction.reply('pong');
       break;
+    }
 
-    case 'getprice':
+    case 'getprice': {
 
       if(interaction.guild === null){
         await interaction.reply('This command cannot be used in DMs.');
@@ -208,7 +233,7 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
           return;
       }
 
-      const serverStockData = readJSONFile(STOCKDATA)[guild.id];
+      const serverStockData: GuildStockData = readJSONFile(STOCKDATA)[guild.id];
 
       if(serverStockData === undefined){
         await interaction.reply('This server does not have a stock price yet (it may take up to a minute before it gets one, if it was just added to the market).');
@@ -220,18 +245,20 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
         + ' '
         + Discord.italic(guild.name)
         + ': ₦'
-        + serverStockData.actualPrice.toFixed(2)
+        + (serverStockData.actualPrice).toFixed(0)
       );
 
       break;
+    }
 
-    case 'graph':
+    case 'graph': {
 
       // TODO /graph
 
       break;
+    }
 
-    case 'setticker':
+    case 'setticker': {
 
       if(interaction.guild === null){
         await interaction.reply('This command cannot be used in DMs.');
@@ -268,10 +295,58 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
       await interaction.reply(`This server's ticker is now "${ticker}".`);
 
       break;
+    }
 
-    default:
+    case 'buy': {
+
+      let tickerOrId = interaction.options.getString('ticker');
+      let guild = getGuild(tickerOrId, interaction);
+
+      switch(guild){
+        case null:
+          await interaction.reply('Server not found (it is likely no longer trading).');
+          return;
+
+        case undefined:
+          await interaction.reply('Stock ticker or server ID not found.');
+          return;
+      }
+
+      const serverStockData: GuildStockData = readJSONFile(STOCKDATA)[guild.id];
+      const volumeLimit = Math.floor(PUBLICAVAILSHARES * serverStockData.sharesLeft);
+      const volume = interaction.options.getInteger('volume') ?? 1;
+
+      if(volume > volumeLimit){
+        interaction.reply(`You requested ${volume} stocks, but the current limit is ${volumeLimit}. Try again with a smaller volume.`);
+        break;
+      }
+
+      if(volume <= 0){
+        interaction.reply(`Cannot buy a negative or zero number of stocks.`);
+        break;
+      }
+
+      const price = interaction.options.getInteger('price');
+
+      if(price === null){
+        /* TODO Market order */
+
+      } else {
+        /* TODO Limit order */
+      }
+
+      break;
+    }
+
+    case 'sell': {
+      // TODO /sell
+      break;
+    }
+
+    default: {
       await interaction.reply(`Unknown command ${interaction.commandName}`);
       break;
+    }
   }
 });
 
