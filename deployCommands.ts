@@ -52,13 +52,22 @@ const commands = [
     ),
 
   new SlashCommandBuilder()
-    .setName('getprice')
+    .setName('price')
     .addStringOption(option => option
       .setName('ticker')
       .setDescription('Stock ticker')
       .setRequired(false)
     )
     .setDescription('View the price of a stock.'),
+
+  new SlashCommandBuilder()
+    .setName('cancel')
+    .setDescription('Cancel a buy or sell order.')
+    .addStringOption(option => option
+      .setName('orderid')
+      .setDescription('ID of the order you want to cancel.')
+      .setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName('graph')
