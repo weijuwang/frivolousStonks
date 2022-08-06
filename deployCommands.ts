@@ -89,7 +89,7 @@ const commands = [
 
     new SlashCommandBuilder()
     .setName('balance')
-    .setDescription('View your balance in coins')
+    .setDescription('View your coin balance')
 ]
   .map(command => command.toJSON());
 

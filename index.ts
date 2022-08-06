@@ -657,8 +657,9 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
           return;
         }
 
-        case "balance" : {
-          await interaction.reply(`Your balance: ₦${newUserData[interaction.user.id].coins}.`)
+        case "balance": {
+          await interaction.reply(`Your balance: ₦${newUserData[interaction.user.id].coins}.`);
+          return;
         }
     
         case 'cancel': {
