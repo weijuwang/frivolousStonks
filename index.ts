@@ -20,7 +20,6 @@ import * as Discord from 'discord.js';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as schedule from 'node-schedule';
-import * as plotlyConstructor from 'plotly';
 import * as crypto from 'crypto';
 import { Mutex, MutexInterface, Semaphore, SemaphoreInterface, withTimeout } from 'async-mutex';
 let moment = require('moment');
@@ -575,12 +574,16 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
           }
 
           const price = interaction.options.getInteger('price');
+
     
           if(price === null){
             /* TODO Market order */
             await interaction.reply("Market orders have not been implemented yet.");
 
-          } else {
+          } 
+          else if (price < 0){
+            await interaction.reply("You cannot place a limit order below 0 coins.");
+          }else {
             let orderBook = readOrderBook(guild.id);
             const orderId = orderBook.orderBuyLimit(new OrderBookQueueEntry(interaction.user.id, volume), price, guild.id);
             writeOrderBook(guild.id, orderBook);
