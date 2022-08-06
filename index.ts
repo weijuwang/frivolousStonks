@@ -95,7 +95,9 @@ interface OrderBookQueueEntry {
 }
 
 class OrderBookQueue {
-  orders: { [key: string]: OrderBookQueueEntry } = {}
+  orders: {
+    [key: string]: OrderBookQueueEntry
+  } = {}
   queue: string[] = []
 
   enter(entry: OrderBookQueueEntry): string {
@@ -154,7 +156,7 @@ class OrderBook {
 
   orderBuyLimit(entry: OrderBookQueueEntry, price: number, guildId: string): string | null {
 
-    checkCoins(entry.volume, price, entry.userId);
+    checkUserCoins(entry.userId, entry.volume, price);
 
     // While there are sellers at this price
     while(price in this.limitSell && entry.volume > 0){
@@ -194,7 +196,7 @@ class OrderBook {
 
   orderSellLimit(entry: OrderBookQueueEntry, price: number, guildId: string): string | null {
 
-    checkCoins(entry.volume, price, entry.userId);
+    checkUserCoins(entry.userId, entry.volume, price);
 
     // While there are buyers at this price
     while(price in this.limitBuy && entry.volume > 0){
@@ -270,6 +272,22 @@ function writeJSONFile(filename: string, object: Object){
   fs.writeFileSync(DATAFOLDER + filename + '.json', JSON.stringify(object));
 }
 
+function readAllStockData(): AllStockData {
+  return readJSONFile(STOCKDATA);
+}
+
+function writeAllStockData(data: AllStockData){
+  writeJSONFile(STOCKDATA, data);
+}
+
+function readAllUsers(): AllUserData {
+  return readJSONFile(USERS);
+}
+
+function writeAllUsers(data: AllUserData){
+  writeJSONFile(USERS, data);
+}
+
 function createOrderBook(guildId: string){
   fs.appendFileSync(DATAFOLDER + ORDERBOOKFOLDER + guildId + '.json', '');
 }
@@ -288,8 +306,8 @@ function writeOrderBook(guildId: string, object: OrderBook){
 
 function executeOrder(order: OrderBookQueueEntry, sellerId: string, guildId: string){
 
-  let newUserData: AllUserData = readJSONFile(USERS);
-  const stockData: AllStockData = readJSONFile(STOCKDATA);
+  let newUserData = readAllUsers();
+  const stockData = readAllStockData();
   const { userId, volume } = order;
 
   const numTransferredCoins = volume * stockData[guildId].actualPrice;
@@ -306,16 +324,16 @@ function executeOrder(order: OrderBookQueueEntry, sellerId: string, guildId: str
     delete newUserData[sellerId].holdings[guildId];
   }
 
-  writeJSONFile(USERS, newUserData);
+  writeAllUsers(newUserData);
 }
 
-function checkCoins(volume: number, price: number, userId: string){
+function checkUserCoins(userId: string, volume: number, price: number){
 
   if(userId === SYSTEMID){
     return;
   }
 
-  const userData: AllUserData = readJSONFile(USERS);
+  const userData = readAllUsers();
 
   let numCoins;
   if(userId in userData){
@@ -369,7 +387,7 @@ function getGuild(tickerOrId: string | null, interaction: Discord.Interaction): 
 function adjustStockPrice(guild: Discord.Guild){
 
   // Read data
-  let stockData: AllStockData = readJSONFile(STOCKDATA);
+  let stockData = readAllStockData();
 
   let numMessages = 0;
   let numAuthors = 1; // this must be 1 to avoid divide by zero
@@ -424,7 +442,7 @@ function adjustStockPrice(guild: Discord.Guild){
   }
 
   // Write data back to the file
-  writeJSONFile(STOCKDATA, stockData);
+  writeAllStockData(stockData);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -445,17 +463,20 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
     return;
   }
 
+  // All commands are put in a queue to avoid any race conditions
   await stockMutex.runExclusive(async () => {
 
     /* If the user does not exist in the database, add them */
 
-    let newUserData = readJSONFile(USERS);
+    let newUserData = readAllUsers();
 
     if(!(interaction.user.id in newUserData)){
       newUserData[interaction.user.id] = { coins: DEFAULTNUMCOINS, holdings: {} } as UserData;
     }
 
-    writeJSONFile(USERS, newUserData);
+    writeAllUsers(newUserData);
+
+    /* Process the command */
 
     try {
       switch(interaction.commandName){
@@ -485,7 +506,7 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
               return;
           }
     
-          const serverStockData: GuildStockData = readJSONFile(STOCKDATA)[guild.id];
+          const serverStockData = readAllStockData()[guild.id];
     
           if(serverStockData === undefined){
             await interaction.reply('This server does not have a stock price yet (it may take up to a minute before it gets one, if it was just added to the market).');
@@ -568,7 +589,7 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
               return;
           }
     
-          const serverStockData: GuildStockData = readJSONFile(STOCKDATA)[guild.id];
+          const serverStockData = readAllStockData()[guild.id];
           const volumeLimit = Math.floor(PUBLICAVAILSHARES * serverStockData.sharesLeft);
           const volume = interaction.options.getInteger('volume') ?? 1;
     
