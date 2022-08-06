@@ -85,7 +85,11 @@ const commands = [
       .setDescription('Stock ticker or server ID')
       .setRequired(true)
     )
-    .setDescription('Set the ticker for this server.')
+    .setDescription('Set the ticker for this server.'),
+
+    new SlashCommandBuilder()
+    .setName('balance')
+    .setDescription('View your balance in coins')
 ]
   .map(command => command.toJSON());
 
