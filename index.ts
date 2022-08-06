@@ -173,6 +173,8 @@ class OrderBook {
       if(entry.volume >= seller!.volume){
         /* The buyer can fulfill the next entire order */
 
+        executeOrder(entry, seller!.userId, guildId);
+
         entry.volume -= seller!.volume;
 
         // Remove the sell contract
@@ -181,9 +183,9 @@ class OrderBook {
       } else {
         /* The buyer cannot fulfill the entire order */
         seller!.volume -= entry.volume;
+        executeOrder(entry, seller!.userId, guildId);
+        entry.volume = 0;
       }
-
-      executeOrder(entry, seller!.userId, guildId);
     }
 
     if(entry.volume === 0){
@@ -194,7 +196,7 @@ class OrderBook {
       this.limitBuy[price] = new OrderBookQueue();
     }
 
-    return this.limitBuy[price].enter(entry);
+    return Object.assign(new OrderBookQueue(), this.limitBuy[price]).enter(entry);
   }
 
   orderSellLimit(entry: OrderBookQueueEntry, price: number, guildId: string): string | null {
@@ -211,6 +213,8 @@ class OrderBook {
       if(entry.volume >= buyer!.volume){
         /* The seller can fulfill the next entire order */
 
+        executeOrder(entry, entry.userId, guildId);
+
         entry.volume -= buyer!.volume;
 
         // Remove the buy contract
@@ -219,10 +223,9 @@ class OrderBook {
       } else {
         /* The seller cannot fulfill the entire order */
         buyer!.volume -= entry.volume;
-        return null;
+        executeOrder(entry, buyer!.userId, guildId);
+        entry.volume = 0;
       }
-
-      executeOrder(entry, buyer!.userId, guildId);
     }
 
     if(entry.volume === 0){
@@ -233,7 +236,7 @@ class OrderBook {
       this.limitSell[price] = new OrderBookQueue();
     }
 
-    return this.limitSell[price].enter(entry);
+    return Object.assign(new OrderBookQueue(), this.limitSell[price]).enter(entry);
   }
 }
 
@@ -291,13 +294,10 @@ function writeOrderBook(guildId: string, object: OrderBook){
 }
 
 function executeOrder(order: OrderBookQueueEntry, sellerId: string, guildId: string){
+
   let newUserData: AllUserData = readJSONFile(USERS);
   const stockData: AllStockData = readJSONFile(STOCKDATA);
   const { userId, volume } = order;
-
-  if(!(userId in newUserData)){
-    newUserData[userId] = new UserData();
-  }
 
   const numTransferredCoins = volume * stockData[guildId].actualPrice;
 
@@ -318,18 +318,22 @@ function executeOrder(order: OrderBookQueueEntry, sellerId: string, guildId: str
 
 function checkCoins(volume: number, price: number, userId: string){
 
-    const userData: AllUserData = readJSONFile(USERS);
+  if(userId === SYSTEMID){
+    return;
+  }
 
-    let numCoins;
-    if(userId in userData){
-      numCoins = userData[userId].coins;
-    } else {
-      numCoins = DEFAULTNUMCOINS;
-    }
+  const userData: AllUserData = readJSONFile(USERS);
 
-    if(volume * price > numCoins){
-      throw new NotEnoughCoinsError();
-    }
+  let numCoins;
+  if(userId in userData){
+    numCoins = userData[userId].coins;
+  } else {
+    numCoins = DEFAULTNUMCOINS;
+  }
+
+  if(volume * price > numCoins){
+    throw new NotEnoughCoinsError();
+  }
 }
 
 function getGuild(tickerOrId: string | null, interaction: Discord.Interaction): Discord.Guild | undefined | null {
@@ -449,6 +453,15 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
   }
 
   await stockMutex.runExclusive(async () => {
+
+    let newUserData = readJSONFile(USERS);
+
+    if(!(interaction.user.id in newUserData)){
+      newUserData[interaction.user.id] = new UserData();
+    }
+
+    writeJSONFile(USERS, newUserData);
+
     try {
       switch(interaction.commandName){
 
@@ -626,9 +639,9 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
             await interaction.reply("Market orders have not been implemented yet.");
 
           } else {
-            let orderBook = readOrderBook(interaction.guildId!);
-            const orderId = orderBook.orderSellLimit(new OrderBookQueueEntry(interaction.user.id, volume), price, interaction.guildId!);
-            writeOrderBook(interaction.guildId!, orderBook);
+            let orderBook = readOrderBook(guild.id);
+            const orderId = orderBook.orderSellLimit(new OrderBookQueueEntry(interaction.user.id, volume), price, guild.id);
+            writeOrderBook(guild.id, orderBook);
 
             if(orderId === null){
               await interaction.reply(`You sold ${volume} shares of ${getIdentifier(guild)} at ₦${price}.`);
@@ -656,6 +669,7 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
         await interaction.reply('You do not have enough coins to make that transaction.');
         return;
       }
+      throw error;
     }
   });
 });
