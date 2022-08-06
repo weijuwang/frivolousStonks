@@ -21,7 +21,7 @@ import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as schedule from 'node-schedule';
 import * as crypto from 'crypto';
-import { Mutex, MutexInterface, Semaphore, SemaphoreInterface, withTimeout } from 'async-mutex';
+import { Mutex } from 'async-mutex';
 let moment = require('moment');
 
 // Import environment variables
@@ -59,11 +59,11 @@ const trueStockPrice = (memberCount: number, numMessages: number, numAuthors: nu
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class UserData {
-  coins: number = DEFAULTNUMCOINS
+interface UserData {
+  coins: number
   holdings: {
     [key: string]: number // server ID => number of stocks held
-  } = {}
+  }
 }
 
 type AllUserData = {
@@ -89,13 +89,7 @@ interface GuildTempData {
   numMessages: number
 }
 
-class OrderBookQueueEntry {
-
-  constructor(userId: string, volume: number){
-    this.userId = userId;
-    this.volume = volume;
-  }
-
+interface OrderBookQueueEntry {
   userId: string // user making the order
   volume: number
 }
@@ -440,7 +434,7 @@ client.on('ready', () => {
 
   // For testing: initializes the Northshore Student Den's order book with 100 sell orders at $3.
   let orderBook = new OrderBook();
-  orderBook.orderSellLimit(new OrderBookQueueEntry(SYSTEMID, 100), 3, "769222562621292585");
+  orderBook.orderSellLimit({ userId: SYSTEMID, volume: 100 }, 3, "769222562621292585");
   writeOrderBook("769222562621292585", orderBook);
   
 });
@@ -453,10 +447,12 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
 
   await stockMutex.runExclusive(async () => {
 
+    /* If the user does not exist in the database, add them */
+
     let newUserData = readJSONFile(USERS);
 
     if(!(interaction.user.id in newUserData)){
-      newUserData[interaction.user.id] = new UserData();
+      newUserData[interaction.user.id] = { coins: DEFAULTNUMCOINS, holdings: {} } as UserData;
     }
 
     writeJSONFile(USERS, newUserData);
@@ -587,18 +583,14 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
           }
 
           const price = interaction.options.getInteger('price');
-
     
           if(price === null){
             /* TODO Market order */
             await interaction.reply("Market orders have not been implemented yet.");
 
-          } 
-          else if (price < 0){
-            await interaction.reply("You cannot place a limit order below 0 coins.");
-          }else {
+          } else {
             let orderBook = readOrderBook(guild.id);
-            const orderId = orderBook.orderBuyLimit(new OrderBookQueueEntry(interaction.user.id, volume), price, guild.id);
+            const orderId = orderBook.orderBuyLimit({ userId: interaction.user.id, volume: volume }, price, guild.id);
             writeOrderBook(guild.id, orderBook);
 
             if(orderId === null){
@@ -626,8 +618,7 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
               await interaction.reply('Stock ticker or server ID not found.');
               return;
           }
-    
-          const serverStockData: GuildStockData = readJSONFile(STOCKDATA)[guild.id];
+
           const volume = interaction.options.getInteger('volume') ?? 1;
     
           if(volume <= 0){
@@ -643,13 +634,13 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
 
           } else {
             let orderBook = readOrderBook(guild.id);
-            const orderId = orderBook.orderSellLimit(new OrderBookQueueEntry(interaction.user.id, volume), price, guild.id);
+            const orderId = orderBook.orderSellLimit({ userId: interaction.user.id, volume }, price, guild.id);
             writeOrderBook(guild.id, orderBook);
 
             if(orderId === null){
               await interaction.reply(`You sold ${volume} shares of ${getIdentifier(guild)} at ₦${price}.`);
             } else {
-              await interaction.reply(`You have placed an order to sell ${volume} shares of ${getIdentifier(guild)} at ₦${price}. Depending on market conditions, this order may take an indefinite amount of time to go through. If you wish to buy stock immediately, do not specify a price.`);
+              await interaction.reply(`You have placed an order to sell ${volume} shares of ${getIdentifier(guild)} at ₦${price} (order ${orderId}). This may take an indefinite amount of time to go through depending on market conditions.`);
               // TODO DM the user when their order goes through
             }
           }
@@ -657,7 +648,7 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
           return;
         }
 
-        case "balance": {
+        case 'balance': {
           await interaction.reply(`Your balance: ₦${newUserData[interaction.user.id].coins}.`);
           return;
         }
