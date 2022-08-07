@@ -40,7 +40,7 @@ const client: Discord.Client = new Discord.Client({
 
 const DATAFOLDER = 'data/';
 const ORDERBOOKFOLDER = 'orderBooks/'
-const STOCKDATA = 'stockData';
+const STOCKDATAFOLDER = 'stockData/';
 const TICKERS = 'tickers';
 const BACKWARDSTICKERS = 'backwardsTickers';
 const USERS = 'users';
@@ -59,10 +59,20 @@ const trueStockPrice = (memberCount: number, numMessages: number, numAuthors: nu
 
 ////////////////////////////////////////////////////////////////////////////////
 
+interface PendingOrder {
+  type: 'buy limit' | 'sell limit' | 'buy market' | 'sell market'
+  guildId: string,
+  volume: number,
+  price: number
+}
+
 interface UserData {
   coins: number
   holdings: {
     [key: string]: number // server ID => number of stocks held
+  },
+  pending: {
+    [key: string]: PendingOrder
   }
 }
 
@@ -72,16 +82,11 @@ type AllUserData = {
 
 interface GuildStockData {
   truePriceHistory: number[]
-  truePrice: number
-  actualPrice: number
+  truePrice: number | undefined
   actualPriceHistoryTimestamps: string[]
   actualPriceHistory: number[]
   numShares: number
   sharesLeft: number
-}
-
-type AllStockData = {
-  [key: string]: GuildStockData
 }
 
 interface GuildTempData {
@@ -125,6 +130,7 @@ class OrderBookQueue {
     }
 
     delete this.orders[nextId];
+    this.queue.pop();
     return true;
   }
 
@@ -144,41 +150,42 @@ class OrderBookQueue {
 
 class OrderBook {
 
-  limitBuy: {
+  buyLimit: {
     [key: number]: OrderBookQueue
   } = {}
 
-  limitSell: {
+  sellLimit: {
     [key: number]: OrderBookQueue
   } = {}
 
-  market: OrderBookQueue = new OrderBookQueue()
+  buyMarket: OrderBookQueue = new OrderBookQueue()
+  sellMarket: OrderBookQueue = new OrderBookQueue()
 
   orderBuyLimit(entry: OrderBookQueueEntry, price: number, guildId: string): string | null {
 
     checkUserCoins(entry.userId, entry.volume, price);
 
     // While there are sellers at this price
-    while(price in this.limitSell && entry.volume > 0){
+    while(price in this.sellLimit && this.sellLimit[price].queue.length > 0 && entry.volume > 0){
 
-      this.limitSell[price] = Object.assign(new OrderBookQueue(), this.limitSell[price]);
+      this.sellLimit[price] = Object.assign(new OrderBookQueue(), this.sellLimit[price]);
 
-      const seller = this.limitSell[price].peekNext();
+      const seller = this.sellLimit[price].peekNext();
 
       if(entry.volume >= seller!.volume){
         /* The buyer can fulfill the next entire order */
 
-        executeOrder(entry, seller!.userId, guildId);
+        executeOrder(entry, price, seller!.userId, guildId, this.sellLimit[price].queue.at(-1)!);
 
         entry.volume -= seller!.volume;
 
         // Remove the sell contract
-        this.limitSell[price].dequeueNext();
+        this.sellLimit[price].dequeueNext();
 
       } else {
         /* The buyer cannot fulfill the entire order */
         seller!.volume -= entry.volume;
-        executeOrder(entry, seller!.userId, guildId);
+        executeOrder(entry, price, seller!.userId, guildId, this.sellLimit[price].queue.at(-1)!);
         entry.volume = 0;
       }
     }
@@ -187,11 +194,24 @@ class OrderBook {
       return null;
     }
 
-    if(!(price in this.limitBuy)){
-      this.limitBuy[price] = new OrderBookQueue();
+    if(!(price in this.buyLimit)){
+      this.buyLimit[price] = new OrderBookQueue();
     }
 
-    return Object.assign(new OrderBookQueue(), this.limitBuy[price]).enter(entry);
+    this.buyLimit[price] = Object.assign(new OrderBookQueue(), this.buyLimit[price]);
+
+    const orderId = this.buyLimit[price].enter(entry);
+
+    let newUserData = readAllUsers();
+    newUserData[entry.userId].pending[orderId] = {
+      type: 'buy limit',
+      guildId: guildId,
+      volume: entry.volume,
+      price: price
+    };
+    writeAllUsers(newUserData);
+
+    return orderId;
   }
 
   orderSellLimit(entry: OrderBookQueueEntry, price: number, guildId: string): string | null {
@@ -199,26 +219,26 @@ class OrderBook {
     checkUserCoins(entry.userId, entry.volume, price);
 
     // While there are buyers at this price
-    while(price in this.limitBuy && entry.volume > 0){
+    while(price in this.buyLimit && this.buyLimit[price].queue.length > 0 && entry.volume > 0){
 
-      this.limitBuy[price] = Object.assign(new OrderBookQueue(), this.limitBuy[price]);
+      this.buyLimit[price] = Object.assign(new OrderBookQueue(), this.buyLimit[price]);
 
-      const buyer = this.limitBuy[price].peekNext();
+      const buyer = this.buyLimit[price].peekNext();
 
       if(entry.volume >= buyer!.volume){
         /* The seller can fulfill the next entire order */
 
-        executeOrder(entry, entry.userId, guildId);
+        executeOrder(entry, price, entry.userId, guildId, this.buyLimit[price].queue.at(-1)!);
 
         entry.volume -= buyer!.volume;
 
         // Remove the buy contract
-        this.limitBuy[price].dequeueNext();
+        this.buyLimit[price].dequeueNext();
 
       } else {
         /* The seller cannot fulfill the entire order */
         buyer!.volume -= entry.volume;
-        executeOrder(entry, buyer!.userId, guildId);
+        executeOrder(entry, price, entry.userId, guildId, this.buyLimit[price].queue.at(-1)!);
         entry.volume = 0;
       }
     }
@@ -227,11 +247,23 @@ class OrderBook {
       return null;
     }
 
-    if(!(price in this.limitSell)){
-      this.limitSell[price] = new OrderBookQueue();
+    if(!(price in this.sellLimit)){
+      this.sellLimit[price] = new OrderBookQueue();
     }
 
-    return Object.assign(new OrderBookQueue(), this.limitSell[price]).enter(entry);
+    this.sellLimit[price] = Object.assign(new OrderBookQueue(), this.sellLimit[price]);
+    const orderId = this.sellLimit[price].enter(entry);
+
+    let newUserData = readAllUsers();
+    newUserData[entry.userId].pending[orderId] = {
+      type: 'sell limit',
+      guildId: guildId,
+      volume: entry.volume,
+      price: price
+    };
+    writeAllUsers(newUserData);
+
+    return orderId;
   }
 }
 
@@ -260,8 +292,13 @@ function getTicker(guildId: string){
   return readJSONFile(BACKWARDSTICKERS)[guildId.toUpperCase()] ?? guildId;
 }
 
-function getIdentifier(guild: Discord.Guild){
+function getGuildIdentifier(guild: Discord.Guild){
   return getTicker(guild.id) + ' ' + Discord.italic(guild.name);
+}
+
+function getPendingOrderIdentifier(orders: { [key: string]: PendingOrder }, orderId: string){
+  const { guildId, price, type, volume } = orders[orderId];
+  return `${type.toUpperCase()} ${volume}x${getTicker(guildId)} @ ₦${price} (${orderId})`;
 }
 
 function readJSONFile(filename: string){
@@ -272,12 +309,16 @@ function writeJSONFile(filename: string, object: Object){
   fs.writeFileSync(DATAFOLDER + filename + '.json', JSON.stringify(object));
 }
 
-function readAllStockData(): AllStockData {
-  return readJSONFile(STOCKDATA);
+function readStockData(guildId: string): GuildStockData | undefined {
+  try {
+    return readJSONFile(STOCKDATAFOLDER + guildId);
+  } catch(error){
+    return undefined;
+  }
 }
 
-function writeAllStockData(data: AllStockData){
-  writeJSONFile(STOCKDATA, data);
+function writeStockData(guildId: string, data: GuildStockData){
+  writeJSONFile(STOCKDATAFOLDER + guildId, data);
 }
 
 function readAllUsers(): AllUserData {
@@ -286,10 +327,6 @@ function readAllUsers(): AllUserData {
 
 function writeAllUsers(data: AllUserData){
   writeJSONFile(USERS, data);
-}
-
-function createOrderBook(guildId: string){
-  fs.appendFileSync(DATAFOLDER + ORDERBOOKFOLDER + guildId + '.json', '');
 }
 
 function readOrderBook(guildId: string): OrderBook {
@@ -304,13 +341,13 @@ function writeOrderBook(guildId: string, object: OrderBook){
   writeJSONFile(ORDERBOOKFOLDER + guildId, object);
 }
 
-function executeOrder(order: OrderBookQueueEntry, sellerId: string, guildId: string){
+function executeOrder(order: OrderBookQueueEntry, price: number, sellerId: string, guildId: string, orderId: string){
 
   let newUserData = readAllUsers();
-  const stockData = readAllStockData();
+  let stockData = readStockData(guildId)!;
   const { userId, volume } = order;
 
-  const numTransferredCoins = volume * stockData[guildId].actualPrice;
+  const numTransferredCoins = volume * price;
 
   newUserData[userId].coins -= numTransferredCoins;
   if(!(guildId in newUserData[userId].holdings)){
@@ -325,6 +362,11 @@ function executeOrder(order: OrderBookQueueEntry, sellerId: string, guildId: str
   }
 
   writeAllUsers(newUserData);
+
+  /* Update stock ticker */
+  stockData.actualPriceHistory.push(price);
+  stockData.actualPriceHistoryTimestamps.push(getCurrTimestamp());
+  writeStockData(guildId, stockData);
 }
 
 function checkUserCoins(userId: string, volume: number, price: number){
@@ -347,7 +389,7 @@ function checkUserCoins(userId: string, volume: number, price: number){
   }
 }
 
-function getGuild(tickerOrId: string | null, interaction: Discord.Interaction): Discord.Guild | undefined | null {
+function getGuildFromIdentifier(tickerOrId: string | null, interaction: Discord.Interaction): Discord.Guild | undefined | null {
 
   /*
   If a guild is returned, it means there is a guild with this ID or ticker.
@@ -387,7 +429,7 @@ function getGuild(tickerOrId: string | null, interaction: Discord.Interaction): 
 function adjustStockPrice(guild: Discord.Guild){
 
   // Read data
-  let stockData = readAllStockData();
+  let stockData = readStockData(guild.id);
 
   let numMessages = 0;
   let numAuthors = 1; // this must be 1 to avoid divide by zero
@@ -397,7 +439,7 @@ function adjustStockPrice(guild: Discord.Guild){
     numMessages = tempMsgData[guild.id].numMessages;
   }
 
-  let thisServer = stockData[guild.id];
+  let thisServer = stockData;
 
   if(thisServer != null){
 
@@ -417,32 +459,33 @@ function adjustStockPrice(guild: Discord.Guild){
     thisServer.truePrice = newData.reduce((a: number, b: number) => a + b) / newData.length;
 
     // The true price pulls the actual price towards it with a certain weight
-    thisServer.actualPrice =
-      (thisServer.actualPrice + thisServer.truePrice * TRUEPRICEWEIGHT)
-      / (TRUEPRICEWEIGHT + 1);
-
-    thisServer.actualPriceHistory.push(thisServer.actualPrice);
+    thisServer.actualPriceHistory.push(
+      (thisServer.actualPriceHistory.at(-1)! + thisServer.truePrice * TRUEPRICEWEIGHT)
+      / (TRUEPRICEWEIGHT + 1));
     thisServer.actualPriceHistoryTimestamps.push(getCurrTimestamp());
 
-    stockData[guild.id] = thisServer;
+    stockData = thisServer;
 
   } else {
     // This is the first time we've collected data from this server
     const firstDataPoint = trueStockPrice(guild.memberCount, numMessages, numAuthors);
-
-    stockData[guild.id] = {
-      truePriceHistory: [firstDataPoint],
-      truePrice: firstDataPoint,
-      actualPrice: firstDataPoint,
-      actualPriceHistoryTimestamps: [getCurrTimestamp()],
-      actualPriceHistory: [firstDataPoint],
-      numShares: DEFAULTNUMSHARES,
-      sharesLeft: DEFAULTNUMSHARES
-    };
+    stockData = guildStockDataConstructor(firstDataPoint);
   }
 
   // Write data back to the file
-  writeAllStockData(stockData);
+  writeStockData(guild.id, stockData);
+}
+
+function guildStockDataConstructor(price: number): GuildStockData {
+
+  return {
+    truePriceHistory: [price],
+    truePrice: price,
+    actualPriceHistoryTimestamps: [getCurrTimestamp()],
+    actualPriceHistory: [price],
+    numShares: DEFAULTNUMSHARES,
+    sharesLeft: DEFAULTNUMSHARES
+  };
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -454,7 +497,6 @@ client.on('ready', () => {
   let orderBook = new OrderBook();
   orderBook.orderSellLimit({ userId: SYSTEMID, volume: 100 }, 3, "769222562621292585");
   writeOrderBook("769222562621292585", orderBook);
-  
 });
 
 client.on('interactionCreate', async (interaction: Discord.Interaction) => {
@@ -471,7 +513,11 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
     let newUserData = readAllUsers();
 
     if(!(interaction.user.id in newUserData)){
-      newUserData[interaction.user.id] = { coins: DEFAULTNUMCOINS, holdings: {} } as UserData;
+      newUserData[interaction.user.id] = {
+        coins: DEFAULTNUMCOINS,
+        holdings: {},
+        pending: {}
+      } as UserData;
     }
 
     writeAllUsers(newUserData);
@@ -485,126 +531,132 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
           await interaction.reply('pong');
           return;
         }
-    
+
         case 'price': {
-    
+
           if(interaction.guild === null){
             await interaction.reply('This command cannot be used in DMs.');
             return;
           }
-    
+
           let tickerOrId = interaction.options.getString('ticker');
-          let guild = getGuild(tickerOrId, interaction);
-    
+          let guild = getGuildFromIdentifier(tickerOrId, interaction);
+
           switch(guild){
             case null:
               await interaction.reply('Server not found (it is likely no longer trading).');
               return;
-    
+
             case undefined:
               await interaction.reply('Stock ticker or server ID not found.');
               return;
           }
-    
-          const serverStockData = readAllStockData()[guild.id];
-    
+
+          const serverStockData = readStockData(guild.id);
+
           if(serverStockData === undefined){
             await interaction.reply('This server does not have a stock price yet (it may take up to a minute before it gets one, if it was just added to the market).');
             return;
           }
-    
+
           await interaction.reply(
-            getIdentifier(guild)
+            getGuildIdentifier(guild)
             + ': ₦'
-            + (serverStockData.actualPrice).toFixed(0)
+            + serverStockData.actualPriceHistory.at(-1)!.toFixed(0)
           );
           return;
         }
-    
+
         case 'graph': {
-    
+
           // TODO /graph
-    
+
           return;
         }
-    
+
         case 'setticker': {
-    
+
           if(interaction.guild === null){
             await interaction.reply('This command cannot be used in DMs.');
             return;
           }
-    
+
           if(!(interaction.member!.permissions as Discord.PermissionsBitField).has('ManageGuild')){
             await interaction.reply('You do not have permission to run this command.');
             return;
           }
-    
+
           const ticker = interaction.options.getString('ticker')?.toUpperCase();
           const tickers = readJSONFile(TICKERS);
           const backwardsTickers = readJSONFile(BACKWARDSTICKERS);
-    
+
           if(ticker === undefined){
             await interaction.reply('No ticker provided.');
             return;
           }
-    
+
           if(tickers[ticker] !== undefined){
             await interaction.reply('That ticker is already being used.');
             return;
           }
-    
+
           if(ticker.length > MAXTICKERLENGTH){
             await interaction.reply('Tickers may not be more than 8 characters long.');
             return;
           }
-    
+
           if(!/^[A-Z0-9]*$/.exec(ticker)){
             await interaction.reply('Tickers may only consist of letters and numbers.');
             return;
           }
-    
+
           delete tickers[backwardsTickers[interaction.guildId!]];
           tickers[ticker] = interaction.guildId!;
           backwardsTickers[interaction.guildId!] = ticker;
           writeJSONFile(TICKERS, tickers);
           writeJSONFile(BACKWARDSTICKERS, backwardsTickers);
-    
+
           await interaction.reply(`This server's ticker is now "${ticker}".`);
           return;
         }
-    
+
         case 'buy': {
-    
+
           let tickerOrId = interaction.options.getString('ticker');
-          let guild = getGuild(tickerOrId, interaction);
-    
+          let guild = getGuildFromIdentifier(tickerOrId, interaction);
+
           switch(guild){
             case null:
               await interaction.reply('Server not found (it is likely no longer trading).');
               return;
-    
+
             case undefined:
               await interaction.reply('Stock ticker or server ID not found.');
               return;
           }
-    
-          const serverStockData = readAllStockData()[guild.id];
+
+          const serverStockData = readStockData(guild.id);
+
+          if(serverStockData === undefined){
+            await interaction.reply('This stock was just added to the exchange and cannot be traded until the beginning of the next minute.');
+            return;
+          }
+
           const volumeLimit = Math.floor(PUBLICAVAILSHARES * serverStockData.sharesLeft);
           const volume = interaction.options.getInteger('volume') ?? 1;
-    
+
           if(volume > volumeLimit){
             await interaction.reply(`You requested ${volume} stocks, but the current limit is ${volumeLimit}. Try again with a smaller volume.`);
             return;
           }
-    
+
           if(volume <= 0){
             await interaction.reply(`Cannot buy a negative or zero number of stocks.`);
             return;
           }
 
           const price = interaction.options.getInteger('price');
-    
+
           if(price === null){
             /* TODO Market order */
             await interaction.reply("Market orders have not been implemented yet.");
@@ -615,40 +667,43 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
             writeOrderBook(guild.id, orderBook);
 
             if(orderId === null){
-              await interaction.reply(`You bought ${volume} shares of ${getIdentifier(guild)} at ₦${price}.`);
+              await interaction.reply(`You bought ${volume} shares of ${getGuildIdentifier(guild)} at ₦${price}.`);
             } else {
-              await interaction.reply(`You have placed an order to buy ${volume} shares of ${getIdentifier(guild)} at ₦${price}. Depending on market conditions, this order may take an indefinite amount of time to go through. If you wish to buy stock immediately, do not specify a price.`);
+              await interaction.reply(`You have placed an order to buy ${volume} shares of ${getGuildIdentifier(guild)} at ₦${price} (order ${orderId}). This may take an indefinite amount of time to go through depending on market conditions.`);
               // TODO DM the user when their order goes through
             }
           }
 
           return;
         }
-    
+
         case 'sell': {
 
           let tickerOrId = interaction.options.getString('ticker');
-          let guild = getGuild(tickerOrId, interaction);
-    
+          let guild = getGuildFromIdentifier(tickerOrId, interaction);
+
           switch(guild){
             case null:
               await interaction.reply('Server not found (it is likely no longer trading).');
               return;
-    
+
             case undefined:
               await interaction.reply('Stock ticker or server ID not found.');
               return;
           }
 
           const volume = interaction.options.getInteger('volume') ?? 1;
-    
+
           if(volume <= 0){
-            await interaction.reply(`Cannot sell a negative or zero number of stocks.`);
+            await interaction.reply('Cannot sell a negative or zero number of stocks.');
+            return;
+          } else if(volume > (newUserData[interaction.user.id].holdings[guild.id] ?? 0)){
+            await interaction.reply('You don\'t have that many stocks to sell.');
             return;
           }
-    
+
           const price = interaction.options.getInteger('price');
-    
+
           if(price === null){
             /* TODO Market order */
             await interaction.reply("Market orders have not been implemented yet.");
@@ -659,9 +714,9 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
             writeOrderBook(guild.id, orderBook);
 
             if(orderId === null){
-              await interaction.reply(`You sold ${volume} shares of ${getIdentifier(guild)} at ₦${price}.`);
+              await interaction.reply(`You sold ${volume} shares of ${getGuildIdentifier(guild)} at ₦${price}.`);
             } else {
-              await interaction.reply(`You have placed an order to sell ${volume} shares of ${getIdentifier(guild)} at ₦${price} (order ${orderId}). This may take an indefinite amount of time to go through depending on market conditions.`);
+              await interaction.reply(`You have placed an order to sell ${volume} shares of ${getGuildIdentifier(guild)} at ₦${price} (order ${orderId}). This may take an indefinite amount of time to go through depending on market conditions.`);
               // TODO DM the user when their order goes through
             }
           }
@@ -670,15 +725,74 @@ client.on('interactionCreate', async (interaction: Discord.Interaction) => {
         }
 
         case 'balance': {
-          await interaction.reply(`Your balance: ₦${newUserData[interaction.user.id].coins}.`);
+          await interaction.reply(`${Discord.bold('Balance:')} ₦${newUserData[interaction.user.id].coins}`);
           return;
         }
-    
+
+        case 'holdings': {
+          let holdings = `${Discord.underscore('Balance:')} ₦${newUserData[interaction.user.id].coins}\n`
+            + Discord.underscore('Holdings:') + '\n';
+
+          for(const guildId in newUserData[interaction.user.id].holdings){
+            holdings += newUserData[interaction.user.id].holdings[guildId]
+              + 'x'
+              + getGuildIdentifier(getGuildFromIdentifier(guildId, interaction)!)
+              + '\n';
+          }
+
+          holdings += Discord.underscore('Pending orders:') + '\n'
+
+          for(const pendingOrderId in newUserData[interaction.user.id].pending){
+            holdings += `${getPendingOrderIdentifier(newUserData[interaction.user.id].pending, pendingOrderId)}\n`;
+          }
+
+          await interaction.reply(holdings);
+          return;
+        }
+
         case 'cancel': {
-          // TODO /cancel
+
+          const orderId = interaction.options.getString('orderid');
+
+          if(orderId === null){
+            await interaction.reply('You must specify an order ID (which should have been displayed when you made your order).');
+            return;
+          }
+
+          let pendingOrders = newUserData[interaction.user.id].pending;
+
+          if(!(orderId in pendingOrders)){
+            await interaction.reply('You do not have a pending order with this ID.');
+            return;
+          }
+
+          const { guildId, price, type } = pendingOrders[orderId];
+          const orderBook = readOrderBook(guildId);
+          let orders;
+
+          switch(type){
+            case 'buy limit':
+              orders = orderBook.buyLimit[price];
+              break;
+            case 'sell limit':
+              orders = orderBook.sellLimit[price];
+              break;
+            case 'buy market':
+              orders = orderBook.buyMarket;
+              break;
+            case 'sell market':
+              orders = orderBook.sellMarket;
+              break;
+          }
+
+          // Remove the order from the queue
+          orders.queue.splice(orders.queue.findIndex(thisOrderId => thisOrderId === orderId));
+          delete orders.orders[orderId];
+
+          await interaction.reply(`Cancelled order: ${getPendingOrderIdentifier(pendingOrders, orderId)}`);
           return;
         }
-    
+
         default: {
           await interaction.reply(`Unknown command ${interaction.commandName}`);
           return;
@@ -724,7 +838,6 @@ client.on('guildCreate', adjustStockPrice);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Currently, this updates EVERY MINUTE, on the minute. When changing the frequency, remember to also modify MAXDATAPOINTS.
 schedule.scheduleJob('0 * * * * *', async () => {
   await stockMutex.runExclusive(async () => {
     client.guilds.cache.forEach(adjustStockPrice);
