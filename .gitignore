@@ -4,4 +4,4 @@ node_modules/
 *.js
 replit.nix
 .replit
-data/*
+data.json
